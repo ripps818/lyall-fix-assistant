@@ -1,45 +1,41 @@
-# Lyall's Linux Game Fix Manager
+# Lyall's Linux Game Fix Assistant
 
-A simple Python CLI tool to automate the installation and updating of [Lyall's Game Fixes](https://codeberg.org/Lyall) on Linux (Bazzite, Steam Deck, standard distros).
+A simple set of tools to automate the installation, updating, and launching of [Lyall's Game Fixes](https://codeberg.org/Lyall) on Linux (Bazzite, Steam Deck, standard distros).
 
-Lyall's fixes are essential for many games running on Proton/Wine (e.g., *Metaphor: ReFantazio*, *Final Fantasy XVI*, *Black Myth: Wukong*), often enabling ultrawide support, FOV sliders, and removing FPS caps. This tool ensures they stay up-to-date without manual file management.
+**Repo:** [https://github.com/ripps818/lyall-fix-assistant](https://github.com/ripps818/lyall-fix-assistant)
 
 ## 🚀 Features
 
 * **Auto-Discovery:** Fetches the latest list of fixes directly from Codeberg.
-* **Smart Detection:** Automatically scans your Steam library folders (including SD cards) to find where your games are installed.
-* **One-Click Updates:** Remembers your game paths. If a game updates and breaks the fix, simply run the script to reinstall the latest version instantly.
-* **Safety First:**
-    * Detects required DLL overrides (e.g., `dinput8`, `winmm`) and tells you exactly what launch options to use in Steam.
-    * Filters out junk files (like `EXTRACT_TO_GAME_FOLDER` placeholders) to keep your game directories clean.
-* **Clean Uninstall:** removing a fix only deletes the mod files, leaving your game data untouched.
-
-## 📋 Prerequisites
-
-You need Python installed (pre-installed on most Linux distros, including Bazzite/SteamOS). You also need two small libraries to handle web requests and Steam config files.
-
-Open your terminal and run:
-
-```bash
-pip install requests vdf
-
-```
+* **Smart Installation:** Automatically scans your Steam library (including SD cards) to find installed games.
+* **Auto-Configuration:** The wrapper script detects which DLLs are installed (e.g., `dinput8`, `winmm`) and **automatically applies the correct WINEDLLOVERRIDES** for you.
+* **Silent Updates:** Checks for mod updates in the background when you launch the game.
 
 ## 📥 Installation
 
-1. Clone this repository or download the script:
-```bash
-git clone [https://github.com/YOUR_USERNAME/lyall-linux-assistant.git](https://github.com/YOUR_USERNAME/lyall-linux-assistant.git)
-cd lyall-linux-assistant
+1.  Clone the repository:
+    ```bash
+    git clone https://github.com/ripps818/lyall-fix-assistant.git
+    cd lyall-fix-assistant
+    ```
 
-```
+2.  Install requirements:
+    ```bash
+    pip install requests vdf
+    ```
 
-
+3.  **Setup the Wrapper (One time setup):**
+    Copy the `lyall` wrapper to your home folder for easy access.
+    ```bash
+    cp lyall ~/lyall
+    chmod +x ~/lyall
+    ```
+    *Note: Ensure the `DB_PATH` inside `~/lyall` points to your `installed_fixes.json`.*
 
 ## 🎮 Usage
 
-Run the script from your terminal:
-
+### 1. Manager Script (`lyall_assistant.py`)
+Run this to browse fixes, install new ones, or uninstall old ones.
 ```bash
 python lyall_assistant.py
 
@@ -49,33 +45,58 @@ python lyall_assistant.py
 
 1. **Select a Fix:** The script lists all available fixes from Lyall's repository.
 2. **First-Time Install:** Select a game fix. The script will scan your Steam library and ask you to confirm which installed game matches the fix.
-3. **Automatic Updates:** On subsequent runs, the script checks all installed fixes. If Lyall has released a new version, it can update them automatically.
+3. **Manage:** Press `[C]` to check updates for all installed games or `[U]` to uninstall a fix.
 
-### Steam Launch Options
+---
 
-**Important:** Most of these fixes are ASI plugins or DLL wrappers. If the script detects a DLL (like `dinput8.dll`), it will warn you to set a launch option in Steam.
+## ⚡ Auto-Update on Launch (Optional)
 
-Example:
+You can use the included `lyall` wrapper script to automatically check for updates every time you launch a game in Steam.
 
-1. Right-click the game in Steam -> **Properties**.
-2. In **Launch Options**, add:
-```text
-WINEDLLOVERRIDES="dinput8=n,b" %command%
+### 1. Setup the Wrapper
+
+Copy the `lyall` script to your home directory so it's easy to access:
+
+```bash
+cp lyall ~/lyall
+chmod +x ~/lyall
 
 ```
 
+### 2. Configuration
 
+Open `~/lyall` in a text editor. You **must** edit the `DB_PATH` variable to point to where `lyall_assistant.py` is saving your database.
 
-## 🛠️ Configuration
+```python
+# Inside ~/lyall
+DB_PATH = os.path.expanduser("~/lyall-fix-assistant/installed_fixes.json")
 
-The script creates a local file named `installed_fixes.json` in the same directory.
+```
 
-* This file tracks which fixes are installed and where your games are located.
-* **Do not share this file**, as it contains your local file paths.
+### 3. Steam Launch Options
+
+Set your Steam Launch Options to run `~/lyall` before the game command.
+
+**Basic Usage:**
+
+```bash
+~/lyall %command%
+
+```
+
+**With Gamemode or MangoHud:**
+
+```bash
+gamemoderun ~/lyall %command%
+
+```
+
+*Note: The wrapper has a 24-hour cooldown by default (editable in the script) to prevent slowing down game launches.*
 
 ## ❤️ Credits
 
 * **[Lyall](https://codeberg.org/Lyall)** for creating these incredible game fixes.
 * This script is a fan-made tool to make managing them easier on Linux.
+
 
 ##### This tool was created with the aid of an AI assistant

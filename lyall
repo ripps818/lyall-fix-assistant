@@ -6,14 +6,37 @@ import time
 import requests
 import zipfile
 import io
+import datetime
 
 # --- CONFIGURATION ---
-# UPDATE THIS to match the location of your json file
 DB_PATH = os.path.expanduser("~/lyall-fix-assistant/installed_fixes.json")
+UPDATE_COOLDOWN = 24
 
-# Update check cooldown (in hours)
-UPDATE_COOLDOWN = 24  
+# ANSI Colors (for Terminal Output)
+CYAN = "\033[96m"
+RESET = "\033[0m"
 # ---------------------
+
+def log(message):
+    """Writes colored text to stdout, but plain text to lyallfix.log."""
+    
+    # 1. Print to Console (Colored)
+    # We replace the plain tag with the colored tag just for the print statement
+    colored_msg = message.replace("[Lyall]", f"{CYAN}[Lyall]{RESET}")
+    print(colored_msg)
+    sys.stdout.flush()
+
+    # 2. Write to File (Clean / No Color)
+    try:
+        log_path = os.path.expanduser("~/lyallfix.log")
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # We strip the timestamp logic if the message already has one, 
+        # but here we just append the raw message.
+        with open(log_path, "a") as f:
+            f.write(f"[{timestamp}] {message}\n")
+    except Exception:
+        pass
 
 def load_db():
     if os.path.exists(DB_PATH):
@@ -30,14 +53,7 @@ def save_db(data):
     except: pass
 
 def get_smart_overrides(installed_files):
-    """
-    Checks the JSON manifest for specific DLLs and returns the needed Proton overrides.
-    This relies on the DB source of truth, not a directory scan.
-    """
     overrides = []
-    
-    # Map filenames to their required override string
-    # "n,b" = Native then Builtin (Forces the game to load the local DLL first)
     dll_map = {
         'dinput8.dll': 'dinput8=n,b',
         'winmm.dll':   'winmm=n,b',
@@ -46,16 +62,13 @@ def get_smart_overrides(installed_files):
         'winhttp.dll': 'winhttp=n,b',
         'xinput1_3.dll': 'xinput1_3=n,b'
     }
-
     for filename in installed_files:
         if filename.lower() in dll_map:
             overrides.append(dll_map[filename.lower()])
-            
     return overrides
 
 def silent_update(repo_name, game_path, state):
     try:
-        # Fetch Release
         api_url = f"https://codeberg.org/api/v1/repos/Lyall/{repo_name}/releases/latest"
         r = requests.get(api_url, timeout=5)
         if r.status_code != 200: return False
@@ -63,16 +76,13 @@ def silent_update(repo_name, game_path, state):
         release = r.json()
         latest_tag = release['tag_name']
         
-        # Compare Tags
         if state[repo_name].get('tag') == latest_tag:
             return False
 
-        # Update Found
-        print(f"[Lyall] Update found for {repo_name}: {latest_tag}")
+        log(f"[Lyall] Update found for {repo_name}: {latest_tag}")
         asset = next((a for a in release['assets'] if a['name'].endswith('.zip')), None)
         if not asset: return False
 
-        # Download & Extract
         z = zipfile.ZipFile(io.BytesIO(requests.get(asset['browser_download_url']).content))
         files_extracted = []
         
@@ -81,76 +91,74 @@ def silent_update(repo_name, game_path, state):
             files_extracted.append(f)
             z.extract(f, game_path)
             
-        # Update DB State
         state[repo_name]['tag'] = latest_tag
         state[repo_name]['files'] = files_extracted
         return True
     except Exception as e:
-        print(f"[Lyall] Update skipped (Error: {e})")
+        log(f"[Lyall] Update skipped (Error: {e})")
         return False
 
 def main():
-    db = load_db()
-    current_dir = os.getcwd() # Steam sets CWD to the game folder
+    log("\n--- New Session Started ---")
+    current_dir = os.getcwd()
+    log(f"[Lyall] Wrapper active. Game Dir: {current_dir}")
     
+    db = load_db()
     target_repo = None
     target_data = None
 
-    # 1. Match current directory to a known game in DB
     if db:
         for repo, data in db.items():
             if os.path.normpath(data['path']) == os.path.normpath(current_dir):
                 target_repo = repo
                 target_data = data
                 break
+    else:
+        log(f"[Lyall] Warning: Database not found at {DB_PATH}")
 
-    # 2. Logic Handler
     if target_repo and target_data:
+        log(f"[Lyall] Identified game: {target_repo}")
         
-        # A. Check for Updates (throttled)
         last_checked = target_data.get('last_checked', 0)
         now = time.time()
         
         if (now - last_checked) > (UPDATE_COOLDOWN * 3600):
+            log("[Lyall] Checking for updates...")
             if silent_update(target_repo, current_dir, db):
-                print(f"[Lyall] Applied update for {target_repo}.")
-                # Reload data just in case file list changed
-                target_data = db[target_repo] 
-            
+                log(f"[Lyall] Applied update for {target_repo}.")
+                target_data = db[target_repo]
+            else:
+                log("[Lyall] No updates found or check skipped.")
             db[target_repo]['last_checked'] = now
             save_db(db)
+        else:
+            log(f"[Lyall] Update cooldown active.")
 
-        # B. Smart DLL Injection (The "Source of Truth" Check)
         if 'files' in target_data:
             needed_overrides = get_smart_overrides(target_data['files'])
-            
             if needed_overrides:
-                # Retrieve existing WINEDLLOVERRIDES from system/Steam
                 current_env = os.environ.get("WINEDLLOVERRIDES", "")
-                
-                # Only append what is missing
-                to_add = []
-                for ov in needed_overrides:
-                    if ov not in current_env:
-                        to_add.append(ov)
-                
+                to_add = [ov for ov in needed_overrides if ov not in current_env]
                 if to_add:
-                    # Handle semicolon separation
                     prefix = ";" if current_env and not current_env.endswith(";") else ""
                     new_env = current_env + prefix + ";".join(to_add)
-                    
                     os.environ["WINEDLLOVERRIDES"] = new_env
-                    print(f"[Lyall] Injecting launch options: {new_env}")
+                    log(f"[Lyall] Injecting launch options: {new_env}")
+                else:
+                    log("[Lyall] Overrides already present.")
+    else:
+        log("[Lyall] No matching fix found in DB.")
 
-    # 3. Launch the Game
     if len(sys.argv) > 1:
+        log("[Lyall] Launching game...")
         sys.stdout.flush()
         try:
-            # Execute the actual game command passed by Steam
             os.execvp(sys.argv[1], sys.argv[1:])
         except OSError as e:
-            print(f"[Lyall] Failed to launch game: {e}")
+            log(f"[Lyall] CRITICAL: Failed to launch game: {e}")
             sys.exit(1)
+    else:
+        log("[Lyall] Error: No game command provided.")
 
 if __name__ == "__main__":
     main()

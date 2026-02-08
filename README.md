@@ -1,3 +1,5 @@
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/M4M81TUBKF)
+
 # Lyall's Linux Game Fix Assistant
 
 A simple set of tools to automate the installation, updating, and launching of [Lyall's Game Fixes](https://codeberg.org/Lyall) on Linux (Bazzite, Steam Deck, standard distros).
